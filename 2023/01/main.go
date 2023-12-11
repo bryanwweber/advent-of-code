@@ -28,30 +28,24 @@ func main() {
 	m["five"] = "5"
 	m["six"] = "6"
 	m["seven"] = "7"
-	m["seve"] = "7"
 	m["eight"] = "8"
-	m["eigh"] = "8"
 	m["nine"] = "9"
-	// Puzzle rules are apparently that eighthree is 83 and sevenine is 79
-	// twone is 21, threeight is 38, fiveight is 58, nineight is 98
+	// The backticks here represent a raw string that doesn't need to escape
+	// the slash at the end
 	regexPattern := `one|two|three|four|five|six|seven|eight|nine|\d`
 	re, err := regexp.Compile(regexPattern)
 	if err != nil {
 		log.Fatal(err)
 	}
 	var maybe_first_digit, maybe_last_digit, first_digit, last_digit string
-	allDigits := make([]int, 0)
-	allMatches := make([][]string, 0)
+	// The first value here is the index of the loop, similar to Python
+	// enumerate. We don't need the index so we discard it
 	for _, line := range lines {
 		if line == "" {
 			continue
 		}
 
-		// digits := re.FindAllString(line, -1)
 		digits := checkForDigits(line, re)
-		allMatches = append(allMatches, digits)
-		// fmt.Println(digits)
-		// break
 
 		if len(digits) < 2 {
 			maybe_first_digit = digits[0]
@@ -71,16 +65,16 @@ func main() {
 			last_digit = m[maybe_last_digit]
 		}
 		digit, _ := strconv.Atoi(first_digit + last_digit)
-		allDigits = append(allDigits, digit)
 		calibration_value += digit
 	}
 	fmt.Println(calibration_value)
-	// for ii := range allDigits {
-	// 	fmt.Printf("%d\t%d: %s\n", ii+1, allDigits[ii], allMatches[ii])
-	// }
 }
 
 func checkForDigits(line string, re *regexp.Regexp) []string {
+	// Puzzle rules are apparently that eighthree is 83 and sevenine is 79
+	// twone is 21, threeight is 38, fiveight is 58, nineight is 98
+	// We therefore advance the start of the next substring match to the start
+	// of the previous match, plus one character.
 	pos := 0
 	digits := make([]string, 0)
 	for {
