@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"regexp"
 	"strconv"
@@ -11,8 +10,8 @@ import (
 )
 
 func main() {
-	// inputFile := "2023/04/input.txt"
-	inputFile := "2023/04/test-input.txt"
+	inputFile := "2023/04/input.txt"
+	// inputFile := "2023/04/test-input.txt"
 	content, err := os.ReadFile(inputFile)
 	if err != nil {
 		log.Fatal("Could not read input file")
@@ -23,8 +22,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Something wrong with the regex")
 	}
-	scores := make([]int, 0)
-	nCards := make(map[int]int)
+	wonCards := make(map[int][]int)
 	for _, line := range lines {
 		if line == "" {
 			continue
@@ -33,19 +31,36 @@ func main() {
 		cardNumber, _ := strconv.Atoi(matches[1])
 		winningCard := matches[2]
 		numberCard := matches[3]
-		winningNumbers := MapAtoi(strings.Split(winningCard, " "))
-		ourNumbers := MapAtoi(strings.Split(numberCard, " "))
+		winningNumbers := mapAtoi(strings.Split(winningCard, " "))
+		ourNumbers := mapAtoi(strings.Split(numberCard, " "))
 		intersection := intersect(winningNumbers, ourNumbers)
-		scores = append(scores, int(math.Pow(2, float64(len(intersection)-1))))
+		nWinningNumbers := len(intersection)
+		cards := make([]int, 0)
+		if nWinningNumbers > 0 {
+			for ii := cardNumber + 1; ii <= cardNumber+nWinningNumbers; ii++ {
+				cards = append(cards, ii)
+			}
+		}
+		wonCards[cardNumber] = cards
 	}
+	totalCards := make(map[int]int)
+	nCards := len(lines) - 1
+	for cardNumber := 1; cardNumber <= nCards; cardNumber++ {
+		addedCards := wonCards[cardNumber]
+		totalCards[cardNumber]++
+		for _, wonCard := range addedCards {
+			totalCards[wonCard] += totalCards[cardNumber]
+		}
+	}
+	fmt.Println(totalCards)
 	sum := 0
-	for _, score := range scores {
-		sum += score
+	for _, n := range totalCards {
+		sum += n
 	}
 	fmt.Println(sum)
 }
 
-func MapAtoi(numbers []string) []int {
+func mapAtoi(numbers []string) []int {
 	var result []int
 	for _, number := range numbers {
 		if number == "" {
