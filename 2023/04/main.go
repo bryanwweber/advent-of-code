@@ -71,6 +71,7 @@ func mapAtoi(numbers []string) []int {
 	}
 	return result
 }
+
 func intersect(a []int, b []int) []int {
 	m := make(map[int]bool)
 	for _, item := range a {
