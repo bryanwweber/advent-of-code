@@ -27,7 +27,7 @@ func main() {
 		log.Fatal("Something wrong with the regex")
 	}
 	partMappings := make(map[int]map[int][]int)
-	symbolAdjacencyMatrix := make(map[int]map[int]bool)
+	symbolAdjacencyMatrix := make(map[int]map[int]string)
 	for row, line := range lines {
 		matches := re.FindAllStringIndex(line, -1)
 		for _, match := range matches {
@@ -47,34 +47,42 @@ func main() {
 		}
 		symbols := symbolRegex.FindAllStringIndex(line, -1)
 		for _, symbol := range symbols {
-			symbolAdjacencyMatrix = addToSymbols(symbolAdjacencyMatrix, row, symbol[0], true)
+			symbolAdjacencyMatrix = addToSymbols(symbolAdjacencyMatrix, row, symbol[0], string(line[symbol[0]]))
 		}
 	}
 	// Doing this with a slice rather than summing directly makes debugging easier
 	allPartNumbers := make([]int, 0)
+	gearRatios := make([]int, 0)
 	for row, valueMap := range symbolAdjacencyMatrix {
-		for col := range valueMap {
+		for col, symbol := range valueMap {
+			if symbol != "*" {
+				continue
+			}
 			partNumbers, exists := partMappings[row][col]
 			if !exists {
 				continue
 			}
+			if len(partNumbers) != 2 {
+				continue
+			}
+			gearRatios = append(gearRatios, partNumbers[0]*partNumbers[1])
 			allPartNumbers = append(allPartNumbers, partNumbers...)
 		}
 	}
 	fmt.Println(allPartNumbers)
 	sum := 0
-	for _, pn := range allPartNumbers {
+	for _, pn := range gearRatios {
 		sum += pn
 	}
 	fmt.Println(sum)
 }
 
-func addToSymbols(symbolMappings map[int]map[int]bool, row int, ii int, thisValue bool) map[int]map[int]bool {
+func addToSymbols(symbolMappings map[int]map[int]string, row int, ii int, thisValue string) map[int]map[int]string {
 	valueMap, rowExists := symbolMappings[row]
 	if rowExists {
 		valueMap[ii] = thisValue
 	} else {
-		valueMap = map[int]bool{ii: thisValue}
+		valueMap = map[int]string{ii: thisValue}
 		symbolMappings[row] = valueMap
 	}
 	return symbolMappings
@@ -91,7 +99,7 @@ func addToPartMappings(partMappings map[int]map[int][]int, row int, ii int, this
 		}
 		valueMap[ii] = value
 	} else {
-		valueMap = map[int][]int{ii: []int{thisPartNumber}}
+		valueMap = map[int][]int{ii: {thisPartNumber}}
 		partMappings[row] = valueMap
 	}
 	return partMappings
