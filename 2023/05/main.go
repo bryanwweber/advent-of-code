@@ -17,7 +17,7 @@ func main() {
 		log.Fatal("Could not read input file")
 	}
 	lines := strings.Split(string(content), "\n")
-	var initialSeeds []Range
+	allMaps := make(map[string][]RangeMap)
 	var seedSoil, soilFertilizer, fertilizerWater, waterLight, lightTemperature, temperatureHumidity, humidityLocation []int
 	for ii, line := range lines {
 		if line == "" {
@@ -26,7 +26,7 @@ func main() {
 		thisMapType := line[0:5]
 		switch thisMapType {
 		case "seeds":
-			initialSeeds = getInitialSeeds(line)
+			allMaps["initialSeeds"] = getInitialSeeds(line)
 		case "seed-":
 			seedSoil = append(seedSoil, ii+1)
 		case "soil-":
@@ -53,11 +53,10 @@ func main() {
 	}
 	fmt.Println(humidityLocation)
 	mapOrdering := []string{
-		"seedToSoil", "soilToFertilizer", "fertilizerToWater",
+		"initialSeeds", "seedToSoil", "soilToFertilizer", "fertilizerToWater",
 		"waterToLight", "lightToTemperature", "temperatureToHumidity",
 		"humidityToLocation",
 	}
-	allMaps := make(map[string][]RangeMap)
 	allMaps["seedToSoil"] = mapRanges(lines, seedSoil[0], seedSoil[1], "seed", "soil")
 	allMaps["soilToFertilizer"] = mapRanges(lines, soilFertilizer[0], soilFertilizer[1], "soil", "fertilizer")
 	allMaps["fertilizerToWater"] = mapRanges(lines, fertilizerWater[0], fertilizerWater[1], "fertilizer", "water")
@@ -65,20 +64,50 @@ func main() {
 	allMaps["lightToTemperature"] = mapRanges(lines, lightTemperature[0], lightTemperature[1], "light", "temperature")
 	allMaps["temperatureToHumidity"] = mapRanges(lines, temperatureHumidity[0], temperatureHumidity[1], "temperature", "humidity")
 	allMaps["humidityToLocation"] = mapRanges(lines, humidityLocation[0], humidityLocation[1], "humidity", "location")
-	source := initialSeeds[1]
-	for _, thisMap := range mapOrdering {
-		nextStart := mapSourceToDestination(allMaps[thisMap], source.start)
-		if nextStart == -1 {
-			log.Fatalf("Bad Mapping for %s: %d", thisMap, source.start)
+	fmt.Println(allMaps["initialSeeds"])
+	fmt.Println(allMaps["seedToSoil"])
+	destination := allMaps["initialSeeds"][0].destination
+	newSource := make([]Range, 0)
+	for _, thisMap := range allMaps[mapOrdering[1]] {
+		if thisMap.source.end <= destination.end {
+			fmt.Printf("source: %v, dest: %v\n", thisMap.source, destination)
+			newStart := thisMap.source.start
+			if newStart < destination.start {
+				newStart = destination.start
+			}
+			newEnd := destination.end
+			newSource = append(newSource, Range{newStart, newEnd})
 		}
-		nextEnd := mapSourceToDestination(allMaps[thisMap], source.end)
-		if nextEnd == -1 {
-			log.Fatalf("Bad Mapping for %s: %d", thisMap, source.start)
-		}
-		nextSource := Range{nextStart, nextEnd}
-		fmt.Printf("%v\t%v\n", source, nextSource)
-		source = nextSource
 	}
+	destination = allMaps["initialSeeds"][1].destination
+	for _, thisMap := range allMaps[mapOrdering[1]] {
+		if thisMap.source.end <= destination.end {
+			if thisMap.source.start < destination.start {
+				continue
+			}
+			fmt.Printf("source: %v, dest: %v\n", thisMap.source, destination)
+			newStart := thisMap.source.start
+			if newStart < destination.start {
+				newStart = destination.start
+			}
+			newEnd := destination.end
+			newSource = append(newSource, Range{newStart, newEnd})
+		}
+	}
+	fmt.Println(newSource)
+	// for _, thisMap := range mapOrdering {
+	// 	nextStart := mapSourceToDestination(allMaps[thisMap], source.start)
+	// 	if nextStart == -1 {
+	// 		log.Fatalf("Bad Mapping for %s: %d", thisMap, source.start)
+	// 	}
+	// 	nextEnd := mapSourceToDestination(allMaps[thisMap], source.end)
+	// 	if nextEnd == -1 {
+	// 		log.Fatalf("Bad Mapping for %s: %d", thisMap, source.start)
+	// 	}
+	// 	nextSource := Range{nextStart, nextEnd}
+	// 	fmt.Printf("%v\t%v\n", source, nextSource)
+	// 	source = nextSource
+	// }
 }
 
 type Range struct {
@@ -89,6 +118,28 @@ type Range struct {
 type RangeMap struct {
 	source      Range
 	destination Range
+}
+
+func somethingNamed(end int, r Range) []Range {
+	if end <= r.end {
+		return []Range{{r.start, end}}
+	} else {
+		newRanges := make([]Range, 0)
+		newRanges = append(newRanges, r)
+		newRanges = append(newRanges, Range{r.end, end})
+		return newRanges
+	}
+}
+
+func createMonotonicRangeFromStartAndEnd(start, end int, r []RangeMap) {
+	sort.Slice(r, func(i, j int) bool { return r[i].source.start > r[j].source.start })
+	for _, thisRange := range r {
+		if start > thisRange.source.start {
+			if end <= thisRange.source.end {
+				fmt.Println("Fully contained")
+			}
+		}
+	}
 }
 
 func mapSourceToDestination(r []RangeMap, source int) int {
@@ -149,18 +200,18 @@ func mapRanges(lines []string, startLine, endLine int, sourceName, destinationNa
 	return returnMap
 }
 
-func getInitialSeeds(line string) []Range {
+func getInitialSeeds(line string) []RangeMap {
 	match := strings.Split(line, ":")
 	numbers := strings.Split(match[1], " ")
 	seedValues := mapAtoi(numbers)
-	seedRanges := make([]Range, 0)
+	seedRanges := make([]RangeMap, 0)
 	for ii := 0; ii < len(seedValues); ii += 2 {
 		start := seedValues[ii]
 		end := seedValues[ii+1] + start
-		seedRanges = append(seedRanges, Range{start, end})
+		seedRanges = append(seedRanges, RangeMap{Range{0, 0}, Range{start, end}})
 	}
 	sort.Slice(seedRanges, func(i, j int) bool {
-		return seedRanges[i].start < seedRanges[j].start
+		return seedRanges[i].source.start < seedRanges[j].source.start
 	})
 	return seedRanges
 }
