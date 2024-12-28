@@ -21,6 +21,8 @@ fn main() {
         (3, 2) => advent::day03::solve_part2(),
         (4, 1) => advent::day04::solve_part1(),
         (4, 2) => advent::day04::solve_part2(),
+        (5, 1) => advent::day05::solve_part1(),
+        (5, 2) => advent::day05::solve_part2(),
         _ => println!("Invalid day or part number, {}:{}", args.day, args.part),
     }
 }
