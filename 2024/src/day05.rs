@@ -1,145 +1,28 @@
-use petgraph::algo::toposort;
-use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::visit::EdgeRef;
-use std::collections::{HashMap, HashSet, VecDeque};
+use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 fn open_file(filepath: &str) -> Result<BufReader<File>, Box<dyn std::error::Error>> {
-    let path = Path::new(filepath);
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
+    let path: &Path = Path::new(filepath);
+    let file: File = File::open(path)?;
+    let reader: BufReader<File> = BufReader::new(file);
     Ok(reader)
 }
 
-fn create_graph(patterns: &[(i32, i32)]) -> DiGraph<i32, ()> {
-    let mut graph = DiGraph::new();
-    let mut node_indices = HashMap::new();
-
-    // Create nodes for unique numbers
-    for &(from, to) in patterns {
-        if !node_indices.contains_key(&from) {
-            let idx = graph.add_node(from);
-            node_indices.insert(from, idx);
-        }
-        if !node_indices.contains_key(&to) {
-            let idx = graph.add_node(to);
-            node_indices.insert(to, idx);
-        }
-    }
-
-    // Add edges
-    for &(from, to) in patterns {
-        let from_idx = node_indices[&from];
-        let to_idx = node_indices[&to];
-        graph.add_edge(from_idx, to_idx, ());
-    }
-
-    graph
-}
-
 fn parse_pattern(line: &str) -> Option<(i32, i32)> {
-    let parts: Vec<&str> = line.split('|').collect();
+    let parts: Vec<&str> = line.split("|").collect();
     if parts.len() != 2 {
         return None;
     }
-
-    let from = parts[0].trim().parse().ok()?;
-    let to = parts[1].trim().parse().ok()?;
-    Some((from, to))
+    let left: i32 = parts[0].trim().parse().unwrap();
+    let right: i32 = parts[1].trim().parse().unwrap();
+    Some((left, right))
 }
 
-fn sort_nodes(graph: &DiGraph<i32, ()>) -> Vec<NodeIndex> {
-    match toposort(&graph, None) {
-        Ok(sorted_nodes) => sorted_nodes,
-        Err(_) => {
-            println!("Could not sort topologically, sorting by in-degree");
-            let mut nodes: Vec<_> = graph
-                .node_indices()
-                .map(|idx| {
-                    let in_degree = graph
-                        .neighbors_directed(idx, petgraph::Direction::Incoming)
-                        .count();
-                    let value = graph[idx];
-                    (in_degree, value, idx)
-                })
-                .collect();
-
-            nodes.sort_by(|&(deg_a, val_a, _), &(deg_b, val_b, _)| {
-                deg_a.cmp(&deg_b).then(val_a.cmp(&val_b))
-            });
-
-            nodes.into_iter().map(|(_, _, idx)| idx).collect()
-        }
-    }
-}
-
-fn find_path_between_nodes(
-    graph: &DiGraph<i32, ()>,
-    start: NodeIndex,
-    end: NodeIndex,
-    allowed_nodes: &HashSet<NodeIndex>,
-) -> Option<Vec<NodeIndex>> {
-    let mut visited = HashSet::new();
-    let mut paths = VecDeque::new();
-    paths.push_back(vec![start]);
-    visited.insert(start);
-    while let Some(path) = paths.pop_front() {
-        let current = *path.last().unwrap();
-        if current == end {
-            return Some(path);
-        }
-
-        for edge in graph.edges(current) {
-            let next = edge.target();
-            if !visited.contains(&next) && allowed_nodes.contains(&next) {
-                visited.insert(next);
-                let mut new_path = path.clone();
-                new_path.push(next);
-                paths.push_back(new_path);
-            }
-        }
-    }
-    None
-}
-
-fn find_ordered_path(graph: &DiGraph<i32, ()>, values: &[i32]) -> Option<Vec<NodeIndex>> {
-    // Create mapping from value to NodeIndex
-    let value_to_idx: HashMap<i32, NodeIndex> =
-        graph.node_indices().map(|idx| (graph[idx], idx)).collect();
-
-    // Convert values to node indices
-    let nodes: Vec<NodeIndex> = values
-        .iter()
-        .filter_map(|v| value_to_idx.get(v))
-        .copied()
-        .collect();
-
-    if nodes.len() != values.len() {
-        return None; // Some values don't exist in graph
-    }
-
-    let allowed_nodes: HashSet<NodeIndex> = nodes.iter().copied().collect();
-    let mut final_path = vec![nodes[0]];
-
-    // Find path between each consecutive pair
-    for window in nodes.windows(2) {
-        let from = window[0];
-        let to = window[1];
-        match find_path_between_nodes(graph, from, to, &allowed_nodes) {
-            Some(path) => {
-                final_path.extend(&path[1..]);
-            }
-            None => return None,
-        }
-    }
-
-    Some(final_path)
-}
-
-pub fn solve_part1() {
-    let patterns = match open_file("data/05/rules.txt") {
+fn read_input() -> (Vec<(i32, i32)>, Vec<Vec<i32>>) {
+    let patterns: Vec<(i32, i32)> = match open_file("data/05/rules.txt") {
         Ok(reader) => reader
             .lines()
             .filter_map(|line| line.ok())
@@ -147,7 +30,7 @@ pub fn solve_part1() {
             .collect::<Vec<(i32, i32)>>(),
         Err(e) => {
             eprintln!("Error reading file: {}", e);
-            return;
+            return (vec![], vec![]);
         }
     };
     let updates: Vec<Vec<i32>> = match open_file("data/05/updates.txt") {
@@ -162,24 +45,74 @@ pub fn solve_part1() {
             .collect(),
         Err(e) => {
             eprintln!("Error reading file: {}", e);
-            return;
+            return (vec![], vec![]);
         }
     };
-    let graph = create_graph(&patterns);
-    let _sorted_nodes = sort_nodes(&graph);
-    let mut total = 0;
-    for update in updates {
-        match find_ordered_path(&graph, &update) {
-            Some(path) => {
-                // Floor division to get the middle index
-                let middle = path.len() / 2;
-                total += update[middle];
-                // println!("Found the middle value: {}", update[middle]);
+    (patterns, updates)
+}
+
+fn sort_sequence(patterns: &[(i32, i32)], update: &[i32], want_valid: bool) -> Option<Vec<i32>> {
+    let mut nums = update.to_vec();
+
+    nums.sort_by(|a, b| {
+        for pattern in patterns {
+            if pattern.0 == *a && pattern.1 == *b {
+                return std::cmp::Ordering::Less;
+            } else if pattern.0 == *b && pattern.1 == *a {
+                return std::cmp::Ordering::Greater;
             }
-            None => {} //println!("No path exists visiting values in this order")},
         }
+        std::cmp::Ordering::Equal
+    });
+    let valid = update
+        .windows(2)
+        .all(|pair| patterns.iter().any(|p| p.0 == pair[0] && p.1 == pair[1]));
+
+    if valid && want_valid {
+        Some(nums)
+    } else if valid && !want_valid {
+        None
+    } else if !valid && want_valid {
+        None
+    } else {
+        Some(nums)
     }
+}
+
+pub fn solve_part1() {
+    let (patterns, updates) = read_input();
+    let pb = ProgressBar::new(updates.len() as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {eta}")
+            .unwrap(),
+    );
+    let total: i32 = updates
+        .par_iter()
+        .progress_with(pb)
+        .map(|update| match sort_sequence(&patterns, &update, true) {
+            Some(sorted) => sorted[sorted.len() / 2],
+            None => 0,
+        })
+        .sum();
     println!("Total: {}", total);
 }
 
-pub fn solve_part2() {}
+pub fn solve_part2() {
+    let (patterns, updates) = read_input();
+    let pb = ProgressBar::new(updates.len() as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {eta}")
+            .unwrap(),
+    );
+    let total: i32 = updates
+        .par_iter()
+        .progress_with(pb)
+        .map(|update| match sort_sequence(&patterns, &update, false) {
+            Some(sorted) => sorted[sorted.len() / 2],
+            None => 0,
+        })
+        .sum();
+    println!("Total: {}", total);
+}
