@@ -4,6 +4,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+// Follow this blog post: https://todd.ginsberg.com/post/advent-of-code/2024/day5/
+
 fn open_file(filepath: &str) -> Result<BufReader<File>, Box<dyn std::error::Error>> {
     let path: &Path = Path::new(filepath);
     let file: File = File::open(path)?;
