@@ -11,64 +11,128 @@ fn open_file(filepath: &str) -> Result<BufReader<File>, Box<dyn std::error::Erro
     Ok(reader)
 }
 
+#[derive(Clone, Debug)]
+enum Block {
+    File(usize),
+    Free,
+}
+
+fn read_data_to_disk(data: &str) -> Vec<Block> {
+    let mut disk: Vec<Block> = Vec::new();
+    let mut file_id: usize = 0;
+    for (data_size, blank_size) in data.chars().tuples() {
+        disk.extend(repeat(Block::File(file_id)).take(data_size.to_digit(10).unwrap() as usize));
+        disk.extend(repeat(Block::Free).take(blank_size.to_digit(10).unwrap() as usize));
+        file_id += 1;
+    }
+    disk.extend(
+        repeat(Block::File(file_id))
+            .take(data.chars().last().unwrap().to_digit(10).unwrap() as usize),
+    );
+    disk
+}
+
 pub fn solve_part1() {
     match open_file("data/09/input.txt") {
         Ok(reader) => {
             let data: String = reader.lines().next().unwrap().unwrap();
-            let mut data_index: i32 = 0;
-            let mut uncompressed: Vec<(i32, i32)> = Vec::new();
-            let mut blank_space: Vec<i32> = Vec::new();
-            for (data_size, blank_size) in data.chars().tuples() {
-                uncompressed.push((data_index, data_size.to_digit(10).unwrap() as i32));
-                blank_space.push(blank_size.to_digit(10).unwrap() as i32);
-                data_index += 1;
-            }
-            uncompressed.push((
-                data_index,
-                data.chars().last().unwrap().to_digit(10).unwrap() as i32,
-            ));
-            let mut compressed: Vec<i32> = Vec::new();
-            let mut ix = 0;
-            compressed.extend(repeat(uncompressed[ix].0).take(uncompressed[ix].1 as usize));
-            uncompressed[ix].1 = 0;
-            ix += 1;
-            let mut blank_index: usize = 0;
-            let mut this_blanks = blank_space[blank_index];
-            let mut length = uncompressed.len() - 1;
-            while length > 0 {
-                if uncompressed[length].1 == 0 {
-                    length -= 1;
-                    continue;
-                }
-                let this_size = uncompressed[length].1;
-                if this_size <= this_blanks {
-                    compressed.extend(repeat(uncompressed[length].0).take(this_size as usize));
-                    this_blanks -= this_size;
-                    length -= 1;
-                } else if this_blanks == 0 {
-                    compressed.extend(repeat(uncompressed[ix].0).take(uncompressed[ix].1 as usize));
-                    uncompressed[ix].1 = 0;
-                    ix += 1;
-                    blank_index += 1;
-                    this_blanks = blank_space[blank_index];
-                } else {
-                    compressed.extend(repeat(uncompressed[length].0).take(this_blanks as usize));
-                    uncompressed[length].1 -= this_blanks;
-                    compressed.extend(repeat(uncompressed[ix].0).take(uncompressed[ix].1 as usize));
-                    uncompressed[ix].1 = 0;
-                    ix += 1;
-                    blank_index += 1;
-                    this_blanks = blank_space[blank_index];
-                }
-            }
-            let total: i64 = compressed
+            let mut disk: Vec<Block> = read_data_to_disk(&data);
+
+            // Find all free blocks and files in one pass
+            let free_blocks: Vec<usize> = disk
                 .iter()
                 .enumerate()
-                .map(|(ix, x)| (ix as i32 * x) as i64)
-                .sum();
-            println!("Total: {}", total);
+                .filter(|(_, b)| matches!(b, Block::Free))
+                .map(|(i, _)| i)
+                .collect();
+
+            let file_blocks: Vec<usize> = disk
+                .iter()
+                .enumerate()
+                .filter(|(_, b)| matches!(b, Block::File(_)))
+                .map(|(i, _)| i)
+                .rev()
+                .collect();
+
+            // Perform swaps
+            for (free_idx, file_idx) in free_blocks
+                .iter()
+                .zip(file_blocks.iter())
+                .filter(|(f, file)| f < file)
+            {
+                disk.swap(*free_idx, *file_idx);
+            }
+            let checksum = disk
+                .iter()
+                .enumerate()
+                .map(|(i, block)| match block {
+                    Block::File(id) => i * id,
+                    Block::Free => 0,
+                })
+                .sum::<usize>();
+            println!("Checksum: {}", checksum);
         }
         Err(e) => println!("Error: {:?}", e),
     }
 }
-pub fn solve_part2() {}
+
+pub fn solve_part2() {
+    match open_file("data/09/input.txt") {
+        Ok(reader) => {
+            let data: String = reader.lines().next().unwrap().unwrap();
+            let mut disk: Vec<Block> = read_data_to_disk(&data);
+
+            let mut runs = Vec::new();
+            let mut ix: usize = 0;
+            while ix < disk.len() {
+                if let Block::File(current_id) = disk[ix] {
+                    let mut run_length = 1;
+                    while ix + run_length < disk.len() {
+                        if let Block::File(next_id) = disk[ix + run_length] {
+                            if next_id == current_id {
+                                run_length += 1;
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    runs.push((ix, run_length));
+                    ix += run_length;
+                } else {
+                    ix += 1;
+                }
+            }
+
+            for &(start, length) in runs.iter().rev() {
+                let mut free_count: usize = 0;
+                for iy in 0..start {
+                    if let Block::Free = disk[iy] {
+                        free_count += 1;
+                        if free_count >= length {
+                            let free_start: usize = iy - length + 1;
+                            for (run_pos, free_pos) in (start..start + length)
+                                .rev()
+                                .zip((free_start..free_start + length).rev())
+                            {
+                                disk.swap(run_pos, free_pos);
+                            }
+                            break;
+                        }
+                    } else {
+                        free_count = 0;
+                    }
+                }
+            }
+            let mut checksum = 0;
+            for (i, block) in disk.iter().enumerate() {
+                if let Block::File(id) = block {
+                    checksum += i * *id;
+                }
+            }
+            println!("Checksum: {}", checksum);
+        }
+        Err(e) => println!("Error: {:?}", e),
+    }
+}
