@@ -21,23 +21,18 @@ fn count_stones_recursive(
     if let Some(&count) = cache.get(&(value, remaining_blinks)) {
         return count;
     }
-    let digits = value.to_string();
-    let n_digits = digits.len();
     let count = if value == 0 {
         count_stones_recursive(1, remaining_blinks - 1, cache)
-    } else if n_digits % 2 == 0 {
-        let (left_half, right_half) = digits.split_at(n_digits / 2);
-        count_stones_recursive(
-            left_half.parse::<u64>().unwrap(),
-            remaining_blinks - 1,
-            cache,
-        ) + count_stones_recursive(
-            right_half.parse::<u64>().unwrap(),
-            remaining_blinks - 1,
-            cache,
-        )
     } else {
-        count_stones_recursive(value * 2024, remaining_blinks - 1, cache)
+        // Neat trick! Found it at https://blog.jverkamp.com/2024/12/11/aoc-2024-day-11-exponential-growthinator/
+        let n_digits = value.ilog10() + 1;
+        if n_digits % 2 == 0 {
+            let divisor = 10u64.pow(n_digits / 2);
+            count_stones_recursive(value / divisor, remaining_blinks - 1, cache)
+                + count_stones_recursive(value % divisor, remaining_blinks - 1, cache)
+        } else {
+            count_stones_recursive(value * 2024, remaining_blinks - 1, cache)
+        }
     };
     cache.insert((value, remaining_blinks), count);
     count
