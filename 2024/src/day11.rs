@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -9,62 +10,58 @@ fn open_file(filepath: &str) -> Result<BufReader<File>, Box<dyn std::error::Erro
     Ok(reader)
 }
 
-#[derive(Clone, Debug)]
-struct Stone {
-    value: i64,
+fn count_stones_recursive(
+    value: u64,
+    remaining_blinks: usize,
+    cache: &mut HashMap<(u64, usize), u64>,
+) -> u64 {
+    if remaining_blinks == 0 {
+        return 1;
+    }
+    if let Some(&count) = cache.get(&(value, remaining_blinks)) {
+        return count;
+    }
+    let digits = value.to_string();
+    let n_digits = digits.len();
+    let count = if value == 0 {
+        count_stones_recursive(1, remaining_blinks - 1, cache)
+    } else if n_digits % 2 == 0 {
+        let (left_half, right_half) = digits.split_at(n_digits / 2);
+        count_stones_recursive(
+            left_half.parse::<u64>().unwrap(),
+            remaining_blinks - 1,
+            cache,
+        ) + count_stones_recursive(
+            right_half.parse::<u64>().unwrap(),
+            remaining_blinks - 1,
+            cache,
+        )
+    } else {
+        count_stones_recursive(value * 2024, remaining_blinks - 1, cache)
+    };
+    cache.insert((value, remaining_blinks), count);
+    count
 }
 
-impl Stone {
-    fn blink(&self) -> Vec<Self> {
-        if self.value == 0 {
-            return vec![Self { value: 1 }];
-        }
-        let digits = self.value.to_string();
-        let n_digits = digits.len();
-        if n_digits % 2 == 0 {
-            let (left_half, right_half) = digits.split_at(n_digits / 2);
-            return vec![
-                Self {
-                    value: left_half.parse::<i64>().unwrap(),
-                },
-                Self {
-                    value: right_half.parse::<i64>().unwrap(),
-                },
-            ];
-        }
-        return vec![Self {
-            value: self.value * 2024,
-        }];
+fn solve(input_file: &str, n_blinks: usize) {
+    let result = open_file(input_file).and_then(|reader| {
+        let line = reader.lines().next().unwrap().unwrap();
+        let mut cache: HashMap<(u64, usize), u64> = HashMap::new();
+        let count: u64 = line
+            .split(" ")
+            .map(|x| count_stones_recursive(x.parse().unwrap(), n_blinks, &mut cache))
+            .sum();
+        Ok(count)
+    });
+    match result {
+        Ok(count) => println!("Count: {}", count),
+        Err(err) => eprintln!("Error: {}", err),
     }
 }
 
 pub fn solve_part1() {
-    let result = open_file("data/11/input.txt").and_then(|reader| {
-        let mut data = reader
-            .lines()
-            .next()
-            .unwrap()
-            .unwrap()
-            .split(' ')
-            .map(|s| Stone {
-                value: s.parse::<i64>().unwrap(),
-            })
-            .collect::<Vec<_>>();
-        let mut blink_counter = 0;
-        while blink_counter < 25 {
-            let mut new_data = Vec::new();
-            for stone in &data {
-                let new_stones = stone.blink();
-                new_data.extend(new_stones);
-            }
-            blink_counter += 1;
-            data = new_data;
-        }
-        Ok(data.len())
-    });
-    match result {
-        Ok(n_stones) => println!("Number of stones: {}", n_stones),
-        Err(err) => eprintln!("Error: {}", err),
-    }
+    solve("data/11/input.txt", 25)
 }
-pub fn solve_part2() {}
+pub fn solve_part2() {
+    solve("data/11/input.txt", 75)
+}
